@@ -1,87 +1,99 @@
-import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '../api/client';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
 import JobForm from '../components/JobForm';
 
-interface Job {
-  id: number;
-  title: string;
-  description: string;
-  requirements: string;
-  company_id: number;
-  status: string;
-}
-
 export default function EditJob() {
-  const { jobId } = useParams<{ jobId: string }>();
-  const [error, setError] = useState('');
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const { id } = useParams();
+  const { user } = useAuth();
 
-  const { data: job, isLoading: isLoadingJob } = useQuery<Job>({
-    queryKey: ['job', jobId],
+  const { data: job, isLoading: isLoadingJob } = useQuery({
+    queryKey: ['job', id],
     queryFn: async () => {
-      const response = await api.get(`/jobs/${jobId}`);
-      return response.data;
+      const response = await fetch(`http://localhost:8000/api/jobs/${id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch job');
+      }
+      return response.json();
     },
   });
 
-  const { mutate: updateJob, isLoading: isUpdating } = useMutation({
+  const updateJobMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await api.put(`/jobs/${jobId}`, data);
-      return response.data;
+      const response = await fetch(`http://localhost:8000/api/jobs/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update job');
+      }
+      return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      queryClient.invalidateQueries({ queryKey: ['job', jobId] });
       navigate('/jobs');
     },
-    onError: (error: any) => {
-      setError(error.response?.data?.detail || 'Failed to update job');
-    },
   });
+
+  // Check if user has permission to edit this job
+  const canManageJob = () => {
+    if (!user || !job) return false;
+    if (user.role === 'admin' || user.role === 'hr_manager') return true;
+    if (user.role === 'recruiter' && job.recruiter_id === user.id) return true;
+    return false;
+  };
 
   if (isLoadingJob) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+      <div className="text-center p-4">
+        Carregando detalhes da vaga...
       </div>
     );
   }
 
   if (!job) {
     return (
-      <div className="text-center">
-        <h2 className="text-lg font-medium text-gray-900">Job not found</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          The job you're looking for doesn't exist or you don't have permission to view it.
-        </p>
+      <div className="text-red-500 text-center p-4">
+        Vaga não encontrada.
+      </div>
+    );
+  }
+
+  if (!canManageJob()) {
+    return (
+      <div className="text-red-500 text-center p-4">
+        Você não tem permissão para editar esta vaga.
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Edit Job</h1>
-        <p className="mt-2 text-sm text-gray-700">
-          Update the job details below.
-        </p>
-      </div>
-
-      {error && (
-        <div className="mb-8 rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="md:grid md:grid-cols-3 md:gap-6">
+        <div className="md:col-span-1">
+          <div className="px-4 sm:px-0">
+            <h3 className="text-lg font-medium leading-6 text-gray-900">Editar Vaga</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Atualize os detalhes da vaga abaixo.
+            </p>
+          </div>
         </div>
-      )}
 
-      <div className="card">
-        <JobForm
-          initialData={job}
-          onSubmit={updateJob}
-          isSubmitting={isUpdating}
-        />
+        <div className="mt-5 md:mt-0 md:col-span-2">
+          <div className="shadow sm:rounded-md sm:overflow-hidden">
+            <div className="px-4 py-5 bg-white space-y-6 sm:p-6">
+              <JobForm
+                initialData={job}
+                onSubmit={updateJobMutation.mutate}
+                isSubmitting={updateJobMutation.isPending}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

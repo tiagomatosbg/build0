@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import apiClient from '../api/client';
 
 interface User {
   id: number;
+  name: string;
   email: string;
   full_name: string;
   role: 'admin' | 'hr_manager' | 'recruiter' | 'candidate';
@@ -19,50 +21,64 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Fetch user data
-      apiClient.get('/auth/me')
-        .then(response => {
-          setUser(response.data);
-        })
-        .catch(() => {
-          localStorage.removeItem('token');
-        })
-        .finally(() => {
-          setLoading(false);
+    // Check if user is logged in
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/auth/me', {
+          credentials: 'include',
         });
-    } else {
-      setLoading(false);
-    }
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await apiClient.post('/auth/token', {
-        username: email,
-        password,
+      const response = await fetch('http://localhost:8000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
       });
-      const { access_token } = response.data;
-      localStorage.setItem('token', access_token);
-      
-      // Fetch user data
-      const userResponse = await apiClient.get('/auth/me');
-      setUser(userResponse.data);
+
+      if (!response.ok) {
+        throw new Error('Login failed');
+      }
+
+      const userData = await response.json();
+      setUser(userData);
     } catch (error) {
-      throw new Error('Invalid credentials');
+      console.error('Login error:', error);
+      throw error;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+  const logout = async () => {
+    try {
+      await fetch('http://localhost:8000/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const value = {
