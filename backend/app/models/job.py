@@ -51,5 +51,9 @@ class Job(Base):
     candidates = relationship("Candidate", secondary="job_applications", back_populates="jobs")
     interviews = relationship("Interview", back_populates="job")
 
+    # Relacionamentos do Pipeline
+    pipeline_etapas = relationship("PipelineEtapa", back_populates="vaga", cascade="all, delete-orphan")
+    pipeline_candidatos = relationship("PipelineCandidato", back_populates="vaga", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<Job {self.title}>" 
